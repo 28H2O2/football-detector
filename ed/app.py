@@ -1,3 +1,4 @@
+# 直接在roboflow网站上导入模型的代码（调api）
 from inference import get_model
 import supervision as sv
 import cv2
