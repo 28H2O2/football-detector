@@ -6,6 +6,8 @@ from team_assigner import TeamAssigner
 from player_ball_assigner import PlayerBallAssigner
 from visualize_heatmap import HeatmapVisualizer
 import numpy as np
+import subprocess
+import sys
 
 def process_video(video_path):
 
@@ -128,5 +130,15 @@ def main():
             st.write("### Teams Heatmap")
             st.image(heatmap_paths[3])
 
+def install_requirements():
+    try:
+        with open("requirements.txt", "r") as f:
+            requirements = f.read().splitlines()
+        for req in requirements:
+            subprocess.check_call([sys.executable, "-m", "pip", "install", req])
+    except FileNotFoundError:
+        print("'requirements.txt' file not found, skipping installation.")
+
 if __name__ == "__main__":
+    install_requirements()
     main()
