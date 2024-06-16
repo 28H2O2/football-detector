@@ -4,6 +4,9 @@ import pickle
 import os
 import cv2
 import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
 os.path.join("../")  # 将上级目录添加到系统路径中
 from utils import get_bbox_width, get_center_of_bbox, measure_distance, get_foot_position
 
@@ -14,6 +17,31 @@ class Tracker:
     def __init__(self, model_path):
         self.model = YOLO(model_path) # 通过YOLO加载模型（训练后的pt文件）
         self.tracker = sv.ByteTrack()   # 初始化目标跟踪器
+
+    def add_position_to_tracks(sekf,tracks):
+        """将目标的位置添加到跟踪结果中"""
+        for object, object_tracks in tracks.items():
+            for frame_num, track in enumerate(object_tracks):
+                for track_id, track_info in track.items():
+                    bbox = track_info['bbox']
+                    if object == 'ball':
+                        position= get_center_of_bbox(bbox)
+                    else:
+                        position = get_foot_position(bbox)
+                    tracks[object][frame_num][track_id]['position'] = position
+
+    def interpolate_ball_positions(self,ball_positions):
+        """插值球的位置"""
+        ball_positions = [x.get(1,{}).get('bbox',[]) for x in ball_positions]
+        df_ball_positions = pd.DataFrame(ball_positions,columns=['x1','y1','x2','y2'])
+
+        # Interpolate missing values
+        df_ball_positions = df_ball_positions.interpolate()
+        df_ball_positions = df_ball_positions.bfill()
+
+        ball_positions = [{1: {"bbox":x}} for x in df_ball_positions.to_numpy().tolist()]
+
+        return ball_positions
 
     def detect_frames(self, frames): # 检测视频帧，能够输出检测到的目标的位置
         batch_size = 20 # 每次检测的帧数
@@ -151,8 +179,8 @@ class Tracker:
 
         return frame
 
-    def draw_annotations(self, video_frames, tracks):
-        # 使用圆圈绘制目标的位置
+    def draw_annotations(self, video_frames, tracks, team_ball_control):
+        """绘制所有追踪效果"""
         output_video_frames = []
         for frame_num, frame in enumerate(video_frames):
             frame = frame.copy()  # 复制一份视频帧    
@@ -166,6 +194,9 @@ class Tracker:
                 color = player.get("team_color", (0, 255, 0))  # 获取队员的颜色，如果不存在则返回默认值
                 frame = self.draw_ellipse(frame, player["bbox"], color, track_id)
 
+                if player.get('has_ball',False):  # 如果队员持球
+                    frame = self.draw_traingle(frame, player["bbox"],(0,0,255))
+
             # 画出裁判的位置
             for _, referee in referee_dict.items():
                 frame = self.draw_ellipse(frame, referee["bbox"], (0, 255, 255))
@@ -174,7 +205,87 @@ class Tracker:
             for _, ball in ball_dict.items():
                 frame = self.draw_traingle(frame, ball["bbox"], (0, 255, 0))
 
+            # 画出控球者
+            frame = self.draw_team_ball_control(frame, frame_num, team_ball_control)
+
+            # 计算并绘制裁判与球以及控球者与球之间的距离
+            if ball_dict:
+                frame = self.draw_distance(frame, player_dict, referee_dict, ball)
+
             output_video_frames.append(frame)
         
         return output_video_frames
 
+    def draw_distance(self, frame, players, referees, ball):
+        """画出两个目标之间的距离"""
+        ball_center = get_center_of_bbox(ball['bbox']) if ball else None
+
+        distances = []
+
+        if ball_center:
+            for ref_id, referee in referees.items():
+                ref_center = get_center_of_bbox(referee['bbox'])
+                distance = measure_distance(ball_center, ref_center)
+                distances.append(f"Ref Distance: {distance:.2f}")
+                cv2.putText(frame, f"Dist: {distance:.2f}", (int(ref_center[0]), int(ref_center[1] - 20)),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 2)
+
+            for player_id, player in players.items():
+                if player.get('has_ball', False):
+                    player_center = get_center_of_bbox(player['bbox'])
+                    distance = measure_distance(ball_center, player_center)
+                    distances.append(f"Control Player Distance: {distance:.2f}")
+                    cv2.putText(frame, f"Dist: {distance:.2f}", (int(player_center[0]), int(player_center[1] - 20)),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 2)
+        
+        # 在右下角显示所有距离信息
+        text_y = frame.shape[0] - 20
+        for dist_text in distances:
+            cv2.putText(frame, dist_text, (frame.shape[1] - 300, text_y),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+            text_y -= 20
+
+        return frame
+
+    
+    def draw_team_ball_control(self,frame,frame_num,team_ball_control):
+        """画出控球者"""
+        overlay = frame.copy()
+        cv2.rectangle(overlay, (1350, 850), (1900,970), (255,255,255), -1 )
+        alpha = 0.4
+        cv2.addWeighted(overlay, alpha, frame, 1 - alpha, 0, frame)
+
+        team_ball_control_till_frame = team_ball_control[:frame_num+1]
+        # 获取控球队伍的比例
+        team_1_num_frames = team_ball_control_till_frame[team_ball_control_till_frame==1].shape[0]
+        team_2_num_frames = team_ball_control_till_frame[team_ball_control_till_frame==2].shape[0]
+        team_1 = team_1_num_frames/(team_1_num_frames+team_2_num_frames)
+        team_2 = team_2_num_frames/(team_1_num_frames+team_2_num_frames)
+
+
+        text_x_position = 1400
+        cv2.putText(frame, f"Team 1 Ball Control: {team_1*100:.2f}%",(text_x_position,900), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,0), 3)
+        cv2.putText(frame, f"Team 2 Ball Control: {team_2*100:.2f}%",(text_x_position,950), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,0), 3)
+
+        return frame
+    
+    def export_positions(self, tracks, output_path='positions.csv'):
+        """导出控球球员、裁判和球的位置"""
+        positions = []
+
+        for frame_num, (player_tracks, referee_tracks, ball_tracks) in enumerate(zip(tracks['players'], tracks['referees'], tracks['ball'])):
+            for player_id, player in player_tracks.items():
+                if player.get('has_ball', False):
+                    position = player['position']
+                    positions.append([frame_num, player_id, 'player', position[0], position[1], player['team']])
+            for referee_id, referee in referee_tracks.items():
+                position = referee['position']
+                positions.append([frame_num, referee_id, 'referee', position[0], position[1], -1])  # team -1 for referees
+            if 1 in ball_tracks:
+                ball = ball_tracks[1]
+                position = get_center_of_bbox(ball['bbox'])
+                positions.append([frame_num, 1, 'ball', position[0], position[1], -1])  # team -1 for ball
+
+        df = pd.DataFrame(positions, columns=['Frame', 'ID', 'Type', 'X', 'Y', 'Team'])
+        df.to_csv(output_path, index=False)
+        print(f"Positions exported to {output_path}")
