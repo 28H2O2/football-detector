@@ -17,6 +17,7 @@ class Tracker:
     def __init__(self, model_path):
         self.model = YOLO(model_path) # 通过YOLO加载模型（训练后的pt文件）
         self.tracker = sv.ByteTrack()   # 初始化目标跟踪器
+        self.previous_distances = []  # 新增变量，存储上一帧的距离信息
 
     def add_position_to_tracks(sekf,tracks):
         """将目标的位置添加到跟踪结果中"""
@@ -238,6 +239,11 @@ class Tracker:
                     cv2.putText(frame, f"Dist: {distance:.2f}", (int(player_center[0]), int(player_center[1] - 20)),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 2)
         
+        if not distances and self.previous_distances:
+            distances = self.previous_distances
+        else:
+            self.previous_distances = distances
+
         # 在右下角显示所有距离信息
         text_y = frame.shape[0] - 20
         for dist_text in distances:
@@ -248,20 +254,25 @@ class Tracker:
         return frame
 
     
-    def draw_team_ball_control(self,frame,frame_num,team_ball_control):
+    def draw_team_ball_control(self, frame, frame_num, team_ball_control):
         """画出控球者"""
         overlay = frame.copy()
-        cv2.rectangle(overlay, (1350, 850), (1900,970), (255,255,255), -1 )
+        cv2.rectangle(overlay, (1350, 850), (1900, 970), (255, 255, 255), -1)
         alpha = 0.4
         cv2.addWeighted(overlay, alpha, frame, 1 - alpha, 0, frame)
 
-        team_ball_control_till_frame = team_ball_control[:frame_num+1]
+        team_ball_control_till_frame = team_ball_control[:frame_num + 1]
         # 获取控球队伍的比例
-        team_1_num_frames = team_ball_control_till_frame[team_ball_control_till_frame==1].shape[0]
-        team_2_num_frames = team_ball_control_till_frame[team_ball_control_till_frame==2].shape[0]
-        team_1 = team_1_num_frames/(team_1_num_frames+team_2_num_frames)
-        team_2 = team_2_num_frames/(team_1_num_frames+team_2_num_frames)
+        team_1_num_frames = team_ball_control_till_frame[team_ball_control_till_frame == 1].shape[0]
+        team_2_num_frames = team_ball_control_till_frame[team_ball_control_till_frame == 2].shape[0]
+        total_frames = team_1_num_frames + team_2_num_frames
 
+        if total_frames > 0:
+            team_1 = team_1_num_frames / total_frames
+            team_2 = team_2_num_frames / total_frames
+        else:
+            team_1 = 0
+            team_2 = 0
 
         text_x_position = 1400
         cv2.putText(frame, f"Team 1 Ball Control: {team_1*100:.2f}%",(text_x_position,900), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,0), 3)

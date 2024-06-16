@@ -9,6 +9,10 @@ import numpy as np
 import os
 
 def main(video_name):
+
+    if video_name.endswith(".mp4"):
+        video_name = video_name[:-4]
+
     video_frames = read_video(f'input_videos/{video_name}') # 读取视频
 
     tracker = Tracker('models/best_yolov5_100.pt')
@@ -47,7 +51,9 @@ def main(video_name):
 
     # 球员分配器
     player_assigner = PlayerBallAssigner()
-    team_ball_control= []
+    team_ball_control = []
+    default_team = 0  # 假设 0 表示没有控球队伍或默认控球队伍
+
     for frame_num, player_track in enumerate(tracks['players']):  # 遍历每一帧
         ball_bbox = tracks['ball'][frame_num][1]['bbox']
         assigned_player = player_assigner.assign_ball_to_player(player_track, ball_bbox)
@@ -56,8 +62,12 @@ def main(video_name):
             tracks['players'][frame_num][assigned_player]['has_ball'] = True
             team_ball_control.append(tracks['players'][frame_num][assigned_player]['team'])
         else:
-            team_ball_control.append(team_ball_control[-1])
-    team_ball_control= np.array(team_ball_control)  # 将控球队伍转换为numpy数组
+            if team_ball_control:
+                team_ball_control.append(team_ball_control[-1])
+            else:  # 如果没有控球队伍
+                team_ball_control.append(default_team)
+
+    team_ball_control = np.array(team_ball_control)  # 将控球队伍转换为numpy数组
 
     # 绘制追踪效果
     output_video_frames = tracker.draw_annotations(video_frames, tracks, team_ball_control)
@@ -68,7 +78,7 @@ def main(video_name):
         os.makedirs(output_dir)
     
     # 保存视频
-    save_video(output_video_frames, f'{output_dir}/output_{video_name}.avi') # 保存视频
+    save_video(output_video_frames, f'{output_dir}/output_{video_name}.mp4') # 保存视频
 
     # 导出位置数据
     tracker.export_positions(tracks, output_path='positions.csv')
@@ -82,5 +92,5 @@ def main(video_name):
     print("Video saved successfully")
 
 if __name__ == '__main__':
-    video_name = 'e660601b_0.mp4'
+    video_name = '0bfacc_6.mp4'
     main(video_name)
