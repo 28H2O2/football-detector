@@ -7,3 +7,5 @@ seaborn
 pandas
 matplotlib
 numpy
+opencv-python-headless
+streamlit
