@@ -9,11 +9,10 @@ import numpy as np
 import os
 
 def main(video_name):
-
-    if video_name.endswith(".mp4"):
-        video_name = video_name[:-4]
-
     video_frames = read_video(f'input_videos/{video_name}') # 读取视频
+
+    # if video_name.endswith(".mp4"):
+    #     video_name = video_name[:-4]
 
     tracker = Tracker('models/best_yolov5_100.pt')
 
@@ -81,16 +80,16 @@ def main(video_name):
     save_video(output_video_frames, f'{output_dir}/output_{video_name}.mp4') # 保存视频
 
     # 导出位置数据
-    tracker.export_positions(tracks, output_path='positions.csv')
+    tracker.export_positions(tracks, output_path=f'{output_dir}/positions.csv')
 
     # 生成热力图
 
     visualizer = HeatmapVisualizer()
-    visualizer.visualize_heatmaps(input_path='positions.csv', output_path = output_dir)
+    visualizer.visualize_heatmaps(input_path=f'{output_dir}/positions.csv', output_path = output_dir)
 
     # 成功保存视频
     print("Video saved successfully")
 
 if __name__ == '__main__':
-    video_name = '0bfacc_6.mp4'
+    video_name = 'e660601b_0.mp4'
     main(video_name)

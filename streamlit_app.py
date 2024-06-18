@@ -130,15 +130,6 @@ def main():
             st.write("### Teams Heatmap")
             st.image(heatmap_paths[3])
 
-def install_requirements():
-    try:
-        with open("requirements.txt", "r") as f:
-            requirements = f.read().splitlines()
-        for req in requirements:
-            subprocess.check_call([sys.executable, "-m", "pip", "install", req])
-    except FileNotFoundError:
-        print("'requirements.txt' file not found, skipping installation.")
-
 if __name__ == "__main__":
-    install_requirements()
+    # os.system("pip install -r requirements.txt")
     main()
